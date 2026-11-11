@@ -1,0 +1,29 @@
+# 비밀 정보 (API 키, 비밀번호 등)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.*
+credentials*.json
+
+# Claude Code 로컬 설정
+.claude/settings.local.json
+
+# 의존성 / 빌드 결과물
+node_modules/
+dist/
+build/
+
+# 로그
+*.log
+npm-debug.log*
+
+# 운영체제 / 편집기 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

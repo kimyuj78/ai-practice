@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>미로찾기</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #334155;
+    --floor: #111c33;
+    --wall: #9ca3af;
+    --accent: #38bdf8;
+    --player: #f472b6;
+    --exit: #4ade80;
+    --trail: rgba(56, 189, 248, 0.22);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* ---------- 상단 바 ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
+  h1 span { color: var(--accent); }
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg {
+    display: flex;
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .seg button, .btn {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #082f49; }
+  .btn { background: var(--panel); color: var(--text); }
+  .btn:hover, .seg button:hover { filter: brightness(1.15); }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 15px;
+    background: var(--panel);
+    padding: 7px 12px;
+    border-radius: 10px;
+    min-width: 92px;
+    text-align: center;
+  }
+
+  /* ---------- 미로 영역 ---------- */
+  #stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    touch-action: none;
+  }
+  canvas { display: block; border-radius: 6px; }
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 4px 12px 8px;
+  }
+
+  /* ---------- 방향 패드 (터치 기기) ---------- */
+  #pad {
+    display: none;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(2, 52px);
+    gap: 6px;
+    justify-content: center;
+    padding: 4px 0 10px;
+    touch-action: none;
+  }
+  #pad button {
+    font-size: 22px;
+    color: var(--text);
+    background: var(--panel);
+    border: 0;
+    border-radius: 12px;
+    touch-action: none;
+  }
+  #pad button:active, #pad button.on { background: var(--panel-2); }
+  #pad [data-dir="up"] { grid-column: 2; grid-row: 1; }
+  #pad [data-dir="left"] { grid-column: 1; grid-row: 2; }
+  #pad [data-dir="down"] { grid-column: 2; grid-row: 2; }
+  #pad [data-dir="right"] { grid-column: 3; grid-row: 2; }
+
+  @media (pointer: coarse) {
+    #pad { display: grid; }
+    .hint .kbd { display: none; }
+  }
+  @media (pointer: fine) {
+    .hint .touch { display: none; }
+  }
+  @media (max-width: 520px) {
+    header { padding: 8px 10px; }
+    h1 { font-size: 16px; }
+    .seg button, .btn { padding: 6px 9px; font-size: 13px; }
+    .timer { min-width: 80px; font-size: 14px; padding: 6px 10px; }
+  }
+
+  /* ---------- 축하 화면 ---------- */
+  #win {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.72);
+    backdrop-filter: blur(3px);
+    z-index: 10;
+    padding: 16px;
+  }
+  #win.show { display: flex; }
+  .card {
+    background: var(--panel);
+    border-radius: 18px;
+    padding: 28px 24px 22px;
+    width: min(360px, 100%);
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: pop 0.35s cubic-bezier(.2, 1.4, .4, 1);
+  }
+  @keyframes pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .card .emoji { font-size: 52px; line-height: 1; }
+  .card h2 { font-size: 24px; margin: 10px 0 4px; }
+  .card p { color: var(--muted); font-size: 14px; }
+  .card .time { font-size: 40px; font-weight: 800; color: var(--exit); margin: 14px 0 4px; font-variant-numeric: tabular-nums; }
+  .card .best { font-size: 13px; color: var(--muted); min-height: 18px; }
+  .card .best.new { color: #facc15; font-weight: 700; }
+  .card .actions { display: flex; gap: 8px; margin-top: 18px; }
+  .card .actions button { flex: 1; padding: 12px; font-size: 15px; background: var(--panel-2); }
+  .card .primary { background: var(--accent); color: #082f49; }
+
+  .confetti {
+    position: fixed;
+    top: -12px;
+    width: 9px;
+    height: 14px;
+    z-index: 11;
+    pointer-events: none;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(110vh) rotate(720deg); opacity: 0.8; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🧩 <span>미로</span>찾기</h1>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="난이도">
+        <button data-diff="easy">쉬움</button>
+        <button data-diff="normal" aria-pressed="true">보통</button>
+        <button data-diff="hard">어려움</button>
+      </div>
+      <div class="timer" id="timer">⏱ 0.0초</div>
+      <button class="btn" id="newBtn">🔄 새 미로</button>
+    </div>
+  </header>
+
+  <div id="stage"><canvas id="maze"></canvas></div>
+
+  <div class="hint">
+    <span class="kbd">방향키(또는 WASD)로 이동 · 사람을 🏁 출구까지!</span>
+    <span class="touch">밀어서(스와이프) 길 끝까지 이동 · 버튼으로 한 칸씩 이동</span>
+  </div>
+
+  <div id="pad">
+    <button data-dir="up" aria-label="위">▲</button>
+    <button data-dir="left" aria-label="왼쪽">◀</button>
+    <button data-dir="down" aria-label="아래">▼</button>
+    <button data-dir="right" aria-label="오른쪽">▶</button>
+  </div>
+
+  <div id="win" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <div class="card">
+      <div class="emoji">🎉</div>
+      <h2 id="winTitle">탈출 성공!</h2>
+      <p id="winMsg">축하합니다! 미로를 빠져나왔어요.</p>
+      <div class="time" id="winTime">0.0초</div>
+      <div class="best" id="winBest"></div>
+      <div class="actions">
+        <button class="btn" id="harderBtn">난이도 올리기</button>
+        <button class="btn primary" id="againBtn">다시 하기</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- 설정 ----------
+  // short: 화면의 짧은 쪽에 놓일 칸 수. 긴 쪽은 화면 비율에 맞춰 자동 계산 → 화면을 꽉 채움
+  const DIFF = {
+    easy:   { short: 8,  label: '쉬움' },
+    normal: { short: 14, label: '보통' },
+    hard:   { short: 22, label: '어려움' },
+  };
+  const ORDER = ['easy', 'normal', 'hard'];
+  const N = 1, E = 2, S = 4, W = 8;
+  const DX = { [N]: 0, [E]: 1, [S]: 0, [W]: -1 };
+  const DY = { [N]: -1, [E]: 0, [S]: 1, [W]: 0 };
+  const OPP = { [N]: S, [E]: W, [S]: N, [W]: E };
+  const KEY_DIR = {
+    ArrowUp: N, ArrowRight: E, ArrowDown: S, ArrowLeft: W,
+    w: N, d: E, s: S, a: W, W: N, D: E, S: S, A: W,
+  };
+  const NAME_DIR = { up: N, right: E, down: S, left: W };
+  const STEP_MS = 55; // 한 칸 이동 애니메이션 시간
+
+  // ---------- 요소 ----------
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('maze');
+  const ctx = canvas.getContext('2d');
+  const timerEl = document.getElementById('timer');
+  const winEl = document.getElementById('win');
+  const css = getComputedStyle(document.documentElement);
+  const color = name => css.getPropertyValue(name).trim();
+
+  // ---------- 상태 ----------
+  let diff = 'normal';
+  let cols = 0, rows = 0, grid = null;
+  let player = { x: 0, y: 0 };
+  let facing = -1;          // -1: 오른쪽을 봄, 1: 왼쪽을 봄
+  let exit = { x: 0, y: 0 };
+  let visited = null;
+  let queue = [];
+  let anim = null;          // { fx, fy, tx, ty, t0 }
+  let cell = 20, wallW = 2;
+  let wallLayer = null;     // 벽을 미리 그려둔 오프스크린 캔버스
+  let startTime = 0, running = false, won = false, timerId = 0;
+
+  try { diff = localStorage.getItem('maze-diff') || diff; } catch (e) {}
+  if (!DIFF[diff]) diff = 'normal';
+
+  // ---------- 미로 생성 (재귀 백트래킹, 반복문 버전) ----------
+  function computeDims() {
+    const r = stage.getBoundingClientRect();
+    const w = Math.max(100, r.width - 12);
+    const h = Math.max(100, r.height - 12);
+    const s = DIFF[diff].short;
+    if (w >= h) { rows = s; cols = Math.max(s, Math.round(s * w / h)); }
+    else        { cols = s; rows = Math.max(s, Math.round(s * h / w)); }
+  }
+
+  function generate() {
+    const total = cols * rows;
+    grid = new Uint8Array(total);
+    const seen = new Uint8Array(total);
+    const stack = [0];
+    seen[0] = 1;
+    while (stack.length) {
+      const c = stack[stack.length - 1];
+      const x = c % cols, y = (c / cols) | 0;
+      const opts = [];
+      for (const d of [N, E, S, W]) {
+        const nx = x + DX[d], ny = y + DY[d];
+        if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && !seen[ny * cols + nx]) opts.push(d);
+      }
+      if (!opts.length) { stack.pop(); continue; }
+      const d = opts[(Math.random() * opts.length) | 0];
+      const n = (y + DY[d]) * cols + (x + DX[d]);
+      grid[c] |= d;
+      grid[n] |= OPP[d];
+      seen[n] = 1;
+      stack.push(n);
+    }
+  }
+
+  // 시작점에서 가장 먼 칸을 출구로 (항상 충분히 긴 경로가 되도록)
+  function farthestFrom(sx, sy) {
+    const dist = new Int32Array(cols * rows).fill(-1);
+    const q = [sy * cols + sx];
+    dist[q[0]] = 0;
+    let far = q[0];
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h];
+      if (dist[c] > dist[far]) far = c;
+      const x = c % cols, y = (c / cols) | 0;
+      for (const d of [N, E, S, W]) {
+        if (!(grid[c] & d)) continue;
+        const n = (y + DY[d]) * cols + (x + DX[d]);
+        if (dist[n] < 0) { dist[n] = dist[c] + 1; q.push(n); }
+      }
+    }
+    return { x: far % cols, y: (far / cols) | 0 };
+  }
+
+  // ---------- 그리기 ----------
+  function layout() {
+    const r = stage.getBoundingClientRect();
+    const w = r.width - 12, h = r.height - 12;
+    cell = Math.max(4, Math.min(w / cols, h / rows));
+    wallW = Math.max(2, Math.round(cell * 0.12));
+    const dpr = window.devicePixelRatio || 1;
+    const pxW = Math.floor(cell * cols), pxH = Math.floor(cell * rows);
+    canvas.style.width = pxW + 'px';
+    canvas.style.height = pxH + 'px';
+    canvas.width = Math.round(pxW * dpr);
+    canvas.height = Math.round(pxH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    buildWallLayer(pxW, pxH, dpr);
+    draw();
+  }
+
+  function buildWallLayer(pxW, pxH, dpr) {
+    wallLayer = document.createElement('canvas');
+    wallLayer.width = Math.round(pxW * dpr);
+    wallLayer.height = Math.round(pxH * dpr);
+    const g = wallLayer.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.strokeStyle = color('--wall');
+    g.lineWidth = wallW;
+    g.lineCap = 'square';
+    g.beginPath();
+    const half = wallW / 2;
+    const X = x => Math.min(Math.max(x * cell, half), pxW - half);
+    const Y = y => Math.min(Math.max(y * cell, half), pxH - half);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const c = grid[y * cols + x];
+        if (!(c & N)) { g.moveTo(X(x), Y(y)); g.lineTo(X(x + 1), Y(y)); }
+        if (!(c & W)) { g.moveTo(X(x), Y(y)); g.lineTo(X(x), Y(y + 1)); }
+        if (x === cols - 1 && !(c & E)) { g.moveTo(X(x + 1), Y(y)); g.lineTo(X(x + 1), Y(y + 1)); }
+        if (y === rows - 1 && !(c & S)) { g.moveTo(X(x), Y(y + 1)); g.lineTo(X(x + 1), Y(y + 1)); }
+      }
+    }
+    g.stroke();
+  }
+
+  function draw(now = performance.now()) {
+    const pxW = cell * cols, pxH = cell * rows;
+    ctx.fillStyle = color('--floor');
+    ctx.fillRect(0, 0, pxW, pxH);
+
+    // 지나온 길
+    ctx.fillStyle = color('--trail');
+    for (let i = 0; i < visited.length; i++) {
+      if (visited[i]) ctx.fillRect((i % cols) * cell, ((i / cols) | 0) * cell, cell + 0.5, cell + 0.5);
+    }
+
+    // 출구 (깜빡이는 초록 칸 + 깃발)
+    const pulse = 0.55 + 0.45 * Math.sin(now / 300);
+    ctx.globalAlpha = 0.35 + 0.35 * pulse;
+    ctx.fillStyle = color('--exit');
+    ctx.fillRect(exit.x * cell, exit.y * cell, cell, cell);
+    ctx.globalAlpha = 1;
+    if (cell >= 14) {
+      ctx.font = `${Math.floor(cell * 0.62)}px system-ui, "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🏁', (exit.x + 0.5) * cell, (exit.y + 0.54) * cell);
+    }
+
+    // 벽
+    ctx.drawImage(wallLayer, 0, 0, pxW, pxH);
+
+    // 플레이어 (이동 애니메이션 보간)
+    let px = player.x, py = player.y;
+    if (anim) {
+      const t = Math.min(1, (now - anim.t0) / STEP_MS);
+      px = anim.fx + (anim.tx - anim.fx) * t;
+      py = anim.fy + (anim.ty - anim.fy) * t;
+    }
+    const cx = (px + 0.5) * cell, cy = (py + 0.5) * cell;
+    // 발밑에 은은한 빛 (작은 미로에서도 위치가 잘 보이도록)
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, cell * 0.6);
+    glow.addColorStop(0, 'rgba(244,114,182,0.45)');
+    glow.addColorStop(1, 'rgba(244,114,182,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - cell * 0.6, cy - cell * 0.6, cell * 1.2, cell * 1.2);
+    // 사람 캐릭터 (달리는 사람 이모지, 진행 방향을 바라봄)
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(facing, 1);
+    ctx.font = `${Math.floor(cell * 0.82)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🏃', 0, cell * 0.04);
+    ctx.restore();
+  }
+
+  function loop(now) {
+    if (anim && now - anim.t0 >= STEP_MS) {
+      anim = null;
+      if (player.x === exit.x && player.y === exit.y) { queue.length = 0; win(); }
+    }
+    if (!anim && queue.length && !won) step(queue.shift(), now);
+    draw(now);
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 이동 ----------
+  const idx = (x, y) => y * cols + x;
+  const openCount = c => ((c & N) ? 1 : 0) + ((c & E) ? 1 : 0) + ((c & S) ? 1 : 0) + ((c & W) ? 1 : 0);
+
+  function step(d, now = performance.now()) {
+    if (won) return false;
+    if (!(grid[idx(player.x, player.y)] & d)) return false;
+    if (!running) startTimer();
+    if (d === E) facing = -1; else if (d === W) facing = 1;   // 이모지는 기본으로 왼쪽을 봄
+    anim = { fx: player.x, fy: player.y, tx: player.x + DX[d], ty: player.y + DY[d], t0: now };
+    player.x += DX[d];
+    player.y += DY[d];
+    visited[idx(player.x, player.y)] = 1;
+    return true;
+  }
+
+  // 한 칸씩 이동 (키보드, 버튼)
+  function pushStep(d) {
+    if (won) return;
+    if (queue.length < 2) queue.push(d);
+  }
+
+  // 갈림길이나 막다른 길이 나올 때까지 쭉 이동 (스와이프, 탭)
+  function pushRun(d) {
+    if (won) return;
+    queue.length = 0;
+    let x = player.x, y = player.y;
+    if (!(grid[idx(x, y)] & d)) return;
+    for (let guard = 0; guard < cols * rows; guard++) {
+      queue.push(d);
+      x += DX[d]; y += DY[d];
+      if (x === exit.x && y === exit.y) break;
+      const c = grid[idx(x, y)];
+      if (openCount(c) !== 2) break;           // 갈림길 또는 막다른 길에서 멈춤
+      d = c & ~OPP[d];                          // 굽은 통로는 따라서 계속 이동
+    }
+  }
+
+  // ---------- 타이머 ----------
+  function fmt(ms) {
+    const s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + '초';
+    const m = Math.floor(s / 60);
+    return `${m}분 ${(s - m * 60).toFixed(1)}초`;
+  }
+  function startTimer() {
+    running = true;
+    startTime = performance.now();
+    clearInterval(timerId);
+    timerId = setInterval(() => { timerEl.textContent = '⏱ ' + fmt(performance.now() - startTime); }, 100);
+  }
+  function stopTimer() { clearInterval(timerId); running = false; }
+
+  // ---------- 승리 ----------
+  function win() {
+    if (won) return;
+    won = true;
+    const ms = performance.now() - startTime;
+    stopTimer();
+    timerEl.textContent = '⏱ ' + fmt(ms);
+
+    const key = 'maze-best-' + diff;
+    let best = null;
+    try { best = Number(localStorage.getItem(key)) || null; } catch (e) {}
+    const bestEl = document.getElementById('winBest');
+    if (best === null || ms < best) {
+      try { localStorage.setItem(key, String(Math.round(ms))); } catch (e) {}
+      bestEl.textContent = best === null ? `🏆 ${DIFF[diff].label} 첫 기록!` : `🏆 새 최고 기록! (이전 ${fmt(best)})`;
+      bestEl.className = 'best new';
+    } else {
+      bestEl.textContent = `${DIFF[diff].label} 최고 기록: ${fmt(best)}`;
+      bestEl.className = 'best';
+    }
+
+    const msgs = ['대단해요! 길을 정확히 찾아냈어요.', '축하합니다! 미로를 빠져나왔어요.', '훌륭해요! 길찾기 달인이네요.', '멋져요! 출구에 도착했어요.'];
+    document.getElementById('winMsg').textContent = msgs[(Math.random() * msgs.length) | 0];
+    document.getElementById('winTime').textContent = fmt(ms);
+    document.getElementById('harderBtn').style.display = diff === 'hard' ? 'none' : '';
+    winEl.classList.add('show');
+    document.getElementById('againBtn').focus();
+    confetti();
+  }
+
+  function confetti() {
+    const colors = ['#f472b6', '#38bdf8', '#4ade80', '#facc15', '#a78bfa', '#fb923c'];
+    for (let i = 0; i < 70; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti';
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.background = colors[i % colors.length];
+      el.style.animationDuration = 1.8 + Math.random() * 1.8 + 's';
+      el.style.animationDelay = Math.random() * 0.5 + 's';
+      el.style.transform = `rotate(${Math.random() * 360}deg)`;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4500);
+    }
+  }
+
+  // ---------- 새 게임 ----------
+  function newGame() {
+    stopTimer();
+    won = false;
+    queue.length = 0;
+    anim = null;
+    winEl.classList.remove('show');
+    timerEl.textContent = '⏱ 0.0초';
+    computeDims();
+    generate();
+    player = { x: 0, y: 0 };
+    facing = -1;
+    exit = farthestFrom(0, 0);
+    visited = new Uint8Array(cols * rows);
+    visited[0] = 1;
+    layout();
+  }
+
+  function setDiff(d) {
+    diff = d;
+    try { localStorage.setItem('maze-diff', d); } catch (e) {}
+    document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.diff === d)));
+    newGame();
+  }
+
+  // ---------- 입력: 키보드 ----------
+  window.addEventListener('keydown', e => {
+    if (winEl.classList.contains('show')) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); newGame(); }
+      return;
+    }
+    const d = KEY_DIR[e.key];
+    if (d) { e.preventDefault(); pushStep(d); }
+    else if (e.key === 'n' || e.key === 'N') newGame();
+  });
+
+  // ---------- 입력: 스와이프 / 탭 (미로 위) ----------
+  let touchStart = null;
+  stage.addEventListener('pointerdown', e => {
+    touchStart = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  });
+  stage.addEventListener('pointerup', e => {
+    if (!touchStart || touchStart.id !== e.pointerId) return;
+    const dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.hypot(dx, dy) >= 24) {
+      // 스와이프: 방향으로 갈림길까지 쭉
+      pushRun(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? E : W) : (dy > 0 ? S : N));
+    } else {
+      // 탭: 사람 기준으로 누른 쪽 방향으로 이동
+      const r = canvas.getBoundingClientRect();
+      const tx = e.clientX - r.left - (player.x + 0.5) * cell;
+      const ty = e.clientY - r.top - (player.y + 0.5) * cell;
+      if (Math.hypot(tx, ty) < cell * 0.5) return;
+      pushRun(Math.abs(tx) > Math.abs(ty) ? (tx > 0 ? E : W) : (ty > 0 ? S : N));
+    }
+  });
+  stage.addEventListener('pointercancel', () => { touchStart = null; });
+
+  // ---------- 입력: 방향 버튼 (누르고 있으면 계속 이동) ----------
+  document.querySelectorAll('#pad button').forEach(btn => {
+    let hold = 0, rep = 0;
+    const stop = () => { clearTimeout(hold); clearInterval(rep); btn.classList.remove('on'); };
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      const d = NAME_DIR[btn.dataset.dir];
+      btn.classList.add('on');
+      pushStep(d);
+      hold = setTimeout(() => { rep = setInterval(() => pushStep(d), 90); }, 260);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => btn.addEventListener(t, stop));
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  });
+
+  // ---------- 버튼 ----------
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => setDiff(b.dataset.diff)));
+  document.getElementById('newBtn').addEventListener('click', newGame);
+  document.getElementById('againBtn').addEventListener('click', newGame);
+  document.getElementById('harderBtn').addEventListener('click', () => setDiff(ORDER[Math.min(2, ORDER.indexOf(diff) + 1)]));
+
+  // 화면 크기 변화: 아직 시작 전이면 새 비율로 미로를 다시 만들고, 진행 중이면 크기만 맞춤
+  // (ResizeObserver: 창 크기뿐 아니라 화면 회전, 주소창 변화, 처음 표시될 때도 감지)
+  let resizeTimer = 0, lastSize = '';
+  new ResizeObserver(() => {
+    const r = stage.getBoundingClientRect();
+    const size = Math.round(r.width) + 'x' + Math.round(r.height);
+    if (size === lastSize) return;
+    lastSize = size;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { (!running && !won) ? newGame() : layout(); }, 120);
+  }).observe(stage);
+
+  // 핀치줌/더블탭 확대 방지 (iOS)
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('dblclick', e => e.preventDefault());
+
+  // 시작
+  setDiff(diff);
+  requestAnimationFrame(loop);
+
+  // 테스트용 훅
+  window.__maze = { get state() { return { cols, rows, player: { ...player }, exit: { ...exit }, won, diff, cell }; },
+                    grid: () => grid, step: pushStep, run: pushRun, N, E, S, W };
+})();
+</script>
+</body>
+</html>
